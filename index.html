@@ -1,0 +1,220 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plant Disease Classifier</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+    <style>
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-green-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-green-800 mb-2">🌿 Plant Disease Classifier 🌿</h1>
+            <p class="text-gray-600">Upload a plant leaf image to detect diseases and get treatment recommendations</p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Left Column - Upload Section -->
+            <div class="lg:w-1/3 bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold text-green-700 mb-4">Upload Image</h2>
+                <div id="drop-zone" class="border-2 border-dashed border-green-300 rounded-lg p-6 text-center cursor-pointer hover:border-green-500 transition-colors">
+                    <i class="fas fa-cloud-upload-alt text-4xl text-green-500 mb-4"></i>
+                    <p class="text-gray-600 mb-2">Drag & drop an image here</p>
+                    <p class="text-sm text-gray-400">or click to browse files</p>
+                    <input type="file" id="file-input" accept="image/*" class="hidden">
+                </div>
+
+                <div class="mt-6">
+                    <button id="predict-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:opacity-50" disabled>
+                        <span class="flex items-center justify-center">
+                            <i class="fas fa-search mr-2"></i>
+                            Detect Disease
+                        </span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Right Column - Results -->
+            <div class="lg:w-2/3">
+                <!-- Image Preview -->
+                <div id="image-preview" class="bg-white rounded-lg shadow-md p-4 mb-6 hidden">  
+                    <img id="preview-img" src="" alt="Preview" class="w-full h-auto rounded-lg">
+                </div>
+                
+                <!-- Results Container -->
+                <div id="results-container" class="bg-white rounded-lg shadow-md p-6 hidden">
+                    <!-- Prediction Result -->
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold text-green-700 mb-2">Detection Result</h3>
+                        <div class="flex items-center">
+                            <span class="text-2xl mr-3" id="disease-icon">🔍</span>
+                            <div>
+                                <p class="font-medium">Detected Disease:</p>
+                                <p id="disease-name" class="text-xl font-bold text-green-800">-</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Disease Information -->
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold text-green-700 mb-3">Disease Information</h3>
+                        <div id="disease-info" class="space-y-3">
+                            <p class="text-gray-600">Loading disease details...</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Supplement Recommendations -->
+                    <div>
+                        <h3 class="text-lg font-semibold text-green-700 mb-3">Recommended Supplements</h3>
+                        <div id="supplements-list" class="space-y-3">
+                            <p class="text-gray-600">Loading supplement recommendations...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Loading Indicator -->
+                <div id="loading-indicator" class="bg-white rounded-lg shadow-md p-6 text-center hidden">
+                    <div class="loading-spinner mx-auto mb-4"></div>
+                    <p class="text-gray-600">Analyzing image... Please wait.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <footer class="text-center py-6 text-gray-500 text-sm">
+        <p>&copy; 2023 Plant Disease Classifier. All rights reserved.</p>
+    </footer>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            const predictBtn = document.getElementById('predict-btn');
+            const imagePreview = document.getElementById('image-preview');
+            const previewImg = document.getElementById('preview-img');
+            const resultsContainer = document.getElementById('results-container');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            
+            dropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                dropZone.classList.add('border-green-500');
+            });
+            
+            dropZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                dropZone.classList.remove('border-green-500');
+            });
+            
+            dropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                dropZone.classList.remove('border-green-500');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFile(files[0]);
+                }
+            });
+            
+            dropZone.addEventListener('click', function() {
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+            
+            function handleFile(file) {
+                if (!file.type.startsWith('image/')) {
+                    alert('Please select an image file.'); 
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    imagePreview.classList.remove('hidden');
+                    predictBtn.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            }
+            
+            predictBtn.addEventListener('click', async function() {
+                if (!fileInput.files[0]) return;
+                
+                // Show loading indicator
+                loadingIndicator.classList.remove('hidden');
+                resultsContainer.classList.add('hidden');
+                predictBtn.disabled = true;
+                
+                // Prepare form data
+                const formData = new FormData();
+                formData.append('image', fileInput.files[0]);
+                
+                try {
+                    // Send request to Flask backend
+                    const response = await fetch('/predict', { method: 'POST', body: formData });
+                    console.log("Response status:", response.status);
+                    const text = await response.text();
+                    console.log("Raw response:", text);
+                    const result = JSON.parse(text);
+
+ 
+                    // Hide loading indicator
+                    loadingIndicator.classList.add('hidden');
+                    
+                    // Show results
+                    resultsContainer.classList.remove('hidden');
+                    
+                    document.getElementById('disease-name').textContent = result.disease_name;
+                    
+                    const diseaseInfoDiv = document.getElementById('disease-info');
+                    diseaseInfoDiv.innerHTML = `
+                        <p><strong>Description:</strong> ${result.description}</p>
+                        <p><strong>Possible Steps:</strong> ${result.possible_steps}</p>
+                    `;
+                    
+                    const supplementsListDiv = document.getElementById('supplements-list');
+                    if (result.supplements && result.supplements.length > 0) {
+                        supplementsListDiv.innerHTML = result.supplements.map(sup => `
+                            <div class="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-pills text-blue-500"></i>
+                                </div>
+                                <div class="flex-grow">
+                                    <h4 class="font-medium">${sup.name}</h4>
+                                    <a href="${sup.link}" target="_blank" class="text-blue-500 hover:underline text-sm">View Product</a>
+                                </div>
+                            </div>
+                        `).join('');
+                    } else {
+                        supplementsListDiv.innerHTML = '<p>No specific supplements recommended for this disease.</p>';
+                    }
+                    
+                } catch (error) {
+                    loadingIndicator.classList.add('hidden');
+                    alert('An error occurred while processing the image. Please try again.');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
